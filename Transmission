@@ -1,42 +1,52 @@
 #include <SoftwareSerial.h>
+#include <TinyGPS++.h>
 
-SoftwareSerial radio(9, 8); // RX, TX
-bool running = true;        // Flag to control transmission
+// RX is -1 because we are only transmitting, TX is 8
+SoftwareSerial radio(-1, 8);
+// RX is 4 (GPS TX), TX is 3 (Not used)
+SoftwareSerial gpsSerial(4, 3);
+TinyGPSPlus gps;
+
+bool running = true;
 
 void setup() {
   Serial.begin(9600);
   radio.begin(9600);
+  gpsSerial.begin(9600);
   Serial.println("TX ready. Press Enter in Serial Monitor to stop.");
 }
 
 void loop() {
-  // Check if user sent something (like Enter) via Serial Monitor
+  // Toggle logic for stopping/starting [cite: 7]
   if (Serial.available() > 0) {
-    while (Serial.available() > 0) {
-      Serial.read(); // Clear the buffer
-    }
-    running = !running; // Toggle: stop if running, start if stopped
-    
-    if (running) {
-      Serial.println("--- Resuming Transmission ---");
-    } else {
-      Serial.println("--- System Paused ---");
-    }
+    while (Serial.available() > 0) Serial.read();
+    running = !running;
+    Serial.println(running ? "--- Resuming ---" : "--- Paused ---");
   }
 
-  // Only send data if running is true
-  if (running) {
-    int x = 2;
-    float y = 4.2;
+  // Feed GPS data to the parser
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
 
-    // Send raw bytes of the float
-    radio.write((uint8_t*)&x, sizeof(x));
-    radio.write((uint8_t*)&y, sizeof(y));
+  // Only send data if running and we have a valid GPS lock
+  if (running && gps.location.isUpdated()) {
+    float lat = gps.location.lat();
+    float lon = gps.location.lng();
+    float alt = gps.altitude.meters();
 
-    Serial.print("Sent: ");
-    Serial.print(x);
-    Serial.print(", ");
-    Serial.println(y);
+    // Transmit raw bytes of GPS data [cite: 10]
+    radio.write((uint8_t*)&lat, sizeof(lat));
+    radio.write((uint8_t*)&lon, sizeof(lon));
+    radio.write((uint8_t*)&alt, sizeof(alt));
+
+    // Local debug print [cite: 11]
+    Serial.print("Sent GPS -> Lat: ");
+    Serial.print(lat, 6);
+    Serial.print(" Lon: ");
+    Serial.print(lon, 6);
+    Serial.print(" Alt: ");
+    Serial.println(alt);
 
     delay(1000);
   }
