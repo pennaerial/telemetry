@@ -1,0 +1,43 @@
+#include <SoftwareSerial.h>
+
+SoftwareSerial radio(9, 8); // RX, TX
+bool running = true;        // Flag to control transmission
+
+void setup() {
+  Serial.begin(9600);
+  radio.begin(9600);
+  Serial.println("TX ready. Press Enter in Serial Monitor to stop.");
+}
+
+void loop() {
+  // Check if user sent something (like Enter) via Serial Monitor
+  if (Serial.available() > 0) {
+    while (Serial.available() > 0) {
+      Serial.read(); // Clear the buffer
+    }
+    running = !running; // Toggle: stop if running, start if stopped
+    
+    if (running) {
+      Serial.println("--- Resuming Transmission ---");
+    } else {
+      Serial.println("--- System Paused ---");
+    }
+  }
+
+  // Only send data if running is true
+  if (running) {
+    int x = 2;
+    float y = 4.2;
+
+    // Send raw bytes of the float
+    radio.write((uint8_t*)&x, sizeof(x));
+    radio.write((uint8_t*)&y, sizeof(y));
+
+    Serial.print("Sent: ");
+    Serial.print(x);
+    Serial.print(", ");
+    Serial.println(y);
+
+    delay(1000);
+  }
+}
