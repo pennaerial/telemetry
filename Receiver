@@ -1,38 +1,28 @@
 #include <SoftwareSerial.h>
 
-SoftwareSerial radio(9, 8); // RX, TX
+// Receiver needs RX (9) to hear the radio
+SoftwareSerial radio(9, 8); 
 
 void setup() {
-  Serial.begin(9600);
-  radio.begin(9600);
-  Serial.println("RX ready");
+  Serial.begin(9600);
+  radio.begin(9600);
+  Serial.println("RX ready");
 }
 
 void loop() {
-  if (radio.available() >= sizeof(float)) {
+  // Check if 12 bytes (3 floats) are waiting in the buffer
+  if (radio.available() >= 12) {
 
-    float lon;
+    float lat, lon, alt;
 
-    // Read raw bytes into float
-    radio.readBytes((uint8_t*)&lon, sizeof(lon));
+    // Read the raw bytes directly into the variables 
+    radio.readBytes((uint8_t*)&lat, sizeof(lat));
+    radio.readBytes((uint8_t*)&lon, sizeof(lon));
+    radio.readBytes((uint8_t*)&alt, sizeof(alt));
 
-    Serial.print("Received lon: ");
-    Serial.println(lon);
-
-    float lat;
-
-    // Read raw bytes into float
-    radio.readBytes((uint8_t*)&lat, sizeof(lat));
-
-    Serial.print("Received lat: ");
-    Serial.println(lat);
-
-    float alt;
-
-    // Read raw bytes into float
-    radio.readBytes((uint8_t*)&alt, sizeof(alt));
-
-    Serial.print("Received alt: ");
-    Serial.println(alt);
-  }
-} (
+    // Display the results [cite: 3]
+    Serial.print("Received Lat: "); Serial.print(lat, 6);
+    Serial.print(" | Lon: "); Serial.print(lon, 6);
+    Serial.print(" | Alt: "); Serial.println(alt);
+  }
+}
