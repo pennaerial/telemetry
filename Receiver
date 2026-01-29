@@ -1,0 +1,38 @@
+#include <SoftwareSerial.h>
+
+SoftwareSerial radio(9, 8); // RX, TX
+
+void setup() {
+  Serial.begin(9600);
+  radio.begin(9600);
+  Serial.println("RX ready");
+}
+
+void loop() {
+  if (radio.available() >= sizeof(float)) {
+
+    float lon;
+
+    // Read raw bytes into float
+    radio.readBytes((uint8_t*)&lon, sizeof(lon));
+
+    Serial.print("Received lon: ");
+    Serial.println(lon);
+
+    float lat;
+
+    // Read raw bytes into float
+    radio.readBytes((uint8_t*)&lat, sizeof(lat));
+
+    Serial.print("Received lat: ");
+    Serial.println(lat);
+
+    float alt;
+
+    // Read raw bytes into float
+    radio.readBytes((uint8_t*)&alt, sizeof(alt));
+
+    Serial.print("Received alt: ");
+    Serial.println(alt);
+  }
+} (
