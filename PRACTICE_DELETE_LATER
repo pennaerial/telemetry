@@ -1,0 +1,169 @@
+FIXED GPS ISSUE THINGY TRANSMITTER CODE
+
+#include <Wire.h>
+#include <Adafruit_BNO055.h>
+#include <utility/imumaths.h>
+#include <SPI.h>
+#include <SD.h>
+#include <SoftwareSerial.h>
+#include <TinyGPS++.h>
+
+// --- Pin Definitions ---
+#define SD_CS 10
+
+// Radio TX on pin 8, RX not used
+SoftwareSerial radio(-1, 8);
+// GPS RX on pin 4 (GPS TX), TX not used
+SoftwareSerial gpsSerial(4, -1);
+
+// Objects
+TinyGPSPlus gps;
+Adafruit_BNO055 bno = Adafruit_BNO055(55, 0x28);
+
+// IMU Offsets
+float roll0 = 0, pitch0 = 0, yaw0 = 0;
+
+// Last known GPS values
+float lastLat = 0, lastLon = 0, lastAlt = 0;
+
+// Control
+bool running = true;
+unsigned long lastSendTime = 0;
+
+void setup() {
+  Serial.begin(9600);
+  radio.begin(9600);
+  gpsSerial.begin(9600);
+  delay(1000);
+
+  Serial.println("=== Integrated System Starting ===");
+
+  // Initialize SD Card
+  Serial.print("Initializing SD card... ");
+  if (!SD.begin(SD_CS)) {
+    Serial.println("FAILED!");
+  } else {
+    Serial.println("SUCCESS");
+    // Create new file with header
+    File dataFile = SD.open("flight.csv", FILE_WRITE);
+    if (dataFile) {
+      dataFile.println("ms,Lat,Lon,Alt,Roll,Pitch,Yaw");
+      dataFile.close();
+      Serial.println("flight.csv created");
+    }
+  }
+
+  // Initialize BNO055
+  Wire.begin(); // Uses A4 (SDA) and A5 (SCL)
+  Serial.print("Initializing BNO055... ");
+  if (!bno.begin()) {
+    Serial.println("BNO055 not detected!");
+    // Continue anyway - GPS might still work
+  } else {
+    Serial.println("SUCCESS");
+    bno.setExtCrystalUse(true);
+    delay(2000);
+
+    // Zero the orientation
+    imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+    yaw0 = euler.x();
+    pitch0 = euler.y();
+    roll0 = euler.z();
+    Serial.println("IMU calibrated");
+  }
+
+  Serial.println("System ready. Press Enter to pause/resume.");
+}
+
+void loop() {
+  // Toggle running state
+  if (Serial.available() > 0) {
+    while (Serial.available() > 0) Serial.read();
+    running = !running;
+    Serial.println(running ? "--- Resuming ---" : "--- Paused ---");
+  }
+
+  // Feed GPS data continuously
+  while (gpsSerial.available() > 0) {
+    gps.encode(gpsSerial.read());
+  }
+
+  // Update last known GPS if we have a new fix
+  if (gps.location.isUpdated()) {
+    lastLat = gps.location.lat();
+    lastLon = gps.location.lng();
+    lastAlt = gps.altitude.meters();
+  }
+
+  // Send data every 1000ms regardless of GPS status
+  if (running && (millis() - lastSendTime >= 1000)) {
+    lastSendTime = millis();
+
+    // Get IMU data
+    imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+    float yaw = euler.x() - yaw0;
+    float pitch = euler.y() - pitch0;
+    float roll = euler.z() - roll0;
+
+    // Normalize yaw
+    if (yaw > 180) yaw -= 360;
+    if (yaw < -180) yaw += 360;
+
+    unsigned long timestamp = millis();
+
+    // Use last known GPS values (or 0 if never received)
+    float lat = lastLat;
+    float lon = lastLon;
+    float alt = lastAlt;
+
+    // --- Send via Telemetry ---
+    radio.write((uint8_t*)&lat, sizeof(lat));
+    radio.write((uint8_t*)&lon, sizeof(lon));
+    radio.write((uint8_t*)&alt, sizeof(alt));
+    radio.write((uint8_t*)&roll, sizeof(roll));
+    radio.write((uint8_t*)&pitch, sizeof(pitch));
+    radio.write((uint8_t*)&yaw, sizeof(yaw));
+
+    // --- Write to SD Card ---
+    File dataFile = SD.open("flight.csv", FILE_WRITE);
+    if (dataFile) {
+      dataFile.print(timestamp);
+      dataFile.print(",");
+      dataFile.print(lat, 6);
+      dataFile.print(",");
+      dataFile.print(lon, 6);
+      dataFile.print(",");
+      dataFile.print(alt, 2);
+      dataFile.print(",");
+      dataFile.print(roll, 2);
+      dataFile.print(",");
+      dataFile.print(pitch, 2);
+      dataFile.print(",");
+      dataFile.println(yaw, 2);
+      dataFile.close();
+    }
+
+    // --- Debug print to Serial ---
+    Serial.print("Time: ");
+    Serial.print(timestamp);
+    Serial.print(" | GPS: ");
+    Serial.print(lat, 6);
+    Serial.print(", ");
+    Serial.print(lon, 6);
+    Serial.print(", ");
+    Serial.print(alt, 2);
+    Serial.print("m | IMU R:");
+    Serial.print(roll, 2);
+    Serial.print(" P:");
+    Serial.print(pitch, 2);
+    Serial.print(" Y:");
+    Serial.print(yaw, 2);
+
+    // Show GPS status
+    if (gps.location.age() < 2000) {
+      Serial.println(" [GPS OK]");
+    } else {
+      Serial.println(" [GPS STALE/LOST]");
+    }
+  }
+} (edited)
